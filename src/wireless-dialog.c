@@ -59,7 +59,8 @@ typedef struct {
 	NMConnection *connection;
 	NMDevice *device;
 	NMAccessPoint *ap;
-	gboolean adhoc_create;
+	gboolean create;
+	NM80211Mode mode;
 
 	GtkTreeModel *device_model;
 	GtkTreeModel *connection_model;
@@ -236,7 +237,7 @@ validate_dialog_ssid (NMAWirelessDialog *self)
 
 	ssid = gtk_entry_get_text (GTK_ENTRY (widget));
 	ssid_len = strlen (ssid);
-	
+
 	if (!ssid || !ssid_len || (ssid_len > 32))
 		return NULL;
 
@@ -254,7 +255,7 @@ stuff_changed_cb (WirelessSecurity *sec, gpointer user_data)
 	GByteArray *ssid = NULL;
 	gboolean free_ssid = TRUE;
 	gboolean valid = FALSE;
-	
+
 	if (priv->connection) {
 		NMSettingWireless *s_wireless;
 		s_wireless = NM_SETTING_WIRELESS (nm_connection_get_setting (priv->connection, NM_TYPE_SETTING_WIRELESS));
@@ -272,6 +273,81 @@ stuff_changed_cb (WirelessSecurity *sec, gpointer user_data)
 	}
 
 	gtk_dialog_set_response_sensitive (GTK_DIALOG (self), GTK_RESPONSE_OK, valid);
+}
+
+static void
+mode_radio_changed (GtkWidget *adhoc_radio,
+                      gpointer user_data)
+{
+	NMAWirelessDialog *self = NMA_WIRELESS_DIALOG (user_data);
+	NMAWirelessDialogPrivate *priv = NMA_WIRELESS_DIALOG_GET_PRIVATE (self);
+	GtkWidget *widget;
+
+	widget = glade_xml_get_widget (priv->xml, "mode_adhoc_radio");
+	if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON (widget)))
+		priv->mode = NM_802_11_MODE_ADHOC;
+	else
+		priv->mode = NM_802_11_MODE_MASTER;
+
+	if (!security_combo_init (self)) {
+		g_warning ("Couldn't change wireless security combo box.");
+		return;
+	}
+	security_combo_changed (priv->sec_combo, self);
+}
+
+static gboolean
+mode_radio_init (NMAWirelessDialog *self)
+{
+	NMAWirelessDialogPrivate *priv = NMA_WIRELESS_DIALOG_GET_PRIVATE (self);
+	guint32 dev_caps;
+	NMSettingWireless *s_wireless = NULL;
+	GtkWidget *widget;
+	const char * mode_str;
+
+	g_return_val_if_fail (self != NULL, FALSE);
+
+	dev_caps = nm_device_wifi_get_capabilities (NM_DEVICE_WIFI (priv->device));
+
+	if (priv->connection) {
+		s_wireless = NM_SETTING_WIRELESS (nm_connection_get_setting (priv->connection, NM_TYPE_SETTING_WIRELESS));
+
+		mode_str = nm_setting_wireless_get_mode (s_wireless);
+		if (mode_str && !strcmp (mode_str, "adhoc"))
+			priv->mode = NM_802_11_MODE_ADHOC;
+		else if (mode_str && !strcmp (mode_str, "master"))
+			priv->mode = NM_802_11_MODE_MASTER;
+		else if (mode_str && !strcmp (mode_str, "infrastructure"))
+			priv->mode = NM_802_11_MODE_INFRA;
+	}
+	else {
+		priv->mode = NM_802_11_MODE_ADHOC;
+
+		widget = glade_xml_get_widget (priv->xml, "mode_infra_radio");
+		if(dev_caps & NM_WIFI_DEVICE_CAP_MODE_MASTER) {
+			gtk_widget_set_sensitive (widget, TRUE);
+		}
+		else {
+			gtk_widget_set_sensitive (widget, FALSE);
+		}
+	}
+
+	if (priv->mode == NM_802_11_MODE_ADHOC) {
+		widget = glade_xml_get_widget (priv->xml, "mode_adhoc_radio");
+		gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON (widget), TRUE);
+	}
+	else if (priv->mode == NM_802_11_MODE_MASTER) {
+		widget = glade_xml_get_widget (priv->xml, "mode_infra_radio");
+		gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON (widget), TRUE);
+	}
+
+	if (!security_combo_init (self)) {
+		g_warning ("Couldn't change wireless security combo box.");
+		return FALSE;
+	}
+	security_combo_changed (priv->sec_combo, self);
+
+	return TRUE;
 }
 
 static void
@@ -332,12 +408,6 @@ connection_combo_changed (GtkWidget *combo,
 	                    C_CON_COLUMN, &priv->connection,
 	                    C_NEW_COLUMN, &is_new, -1);
 
-	if (!security_combo_init (self, priv->auth_only)) {
-		g_warning ("Couldn't change wireless security combo box.");
-		return;
-	}
-	security_combo_changed (priv->sec_combo, self);
-
 	widget = glade_xml_get_widget (priv->xml, "network_name_entry");
 	if (priv->connection) {
 		const GByteArray *ssid;
@@ -351,8 +421,17 @@ connection_combo_changed (GtkWidget *combo,
 		gtk_entry_set_text (GTK_ENTRY (widget), "");
 	}
 
+	if (!mode_radio_init (self)) {
+		g_warning ("Couldn't set up wireless mode radio buttons.");
+		return;
+	}
+
 	gtk_widget_set_sensitive (glade_xml_get_widget (priv->xml, "network_name_entry"), is_new);
 	gtk_widget_set_sensitive (glade_xml_get_widget (priv->xml, "network_name_label"), is_new);
+	gtk_widget_set_sensitive (glade_xml_get_widget (priv->xml, "mode_adhoc_radio"), is_new);
+	if (!is_new)
+		gtk_widget_set_sensitive (glade_xml_get_widget (priv->xml, "mode_infra_radio"), FALSE);
+	gtk_widget_set_sensitive (glade_xml_get_widget (priv->xml, "network_mode_label"), is_new);
 	gtk_widget_set_sensitive (glade_xml_get_widget (priv->xml, "security_combo"), is_new);
 	gtk_widget_set_sensitive (glade_xml_get_widget (priv->xml, "security_combo_label"), is_new);
 	gtk_widget_set_sensitive (glade_xml_get_widget (priv->xml, "security_vbox"), is_new);
@@ -449,8 +528,8 @@ connection_combo_init (NMAWirelessDialog *self, NMConnection *connection)
 			if (!s_wireless)
 				continue;
 
-			/* If creating a new Ad-Hoc network, only show shared network connections */
-			if (priv->adhoc_create) {
+			/* If creating a new Ad-Hoc or master mode network, only show shared network connections */
+			if (priv->create) {
 				NMSettingIP4Config *s_ip4;
 				const char *method = NULL;
 
@@ -463,7 +542,7 @@ connection_combo_init (NMAWirelessDialog *self, NMConnection *connection)
 
 				/* Ignore non-Ad-Hoc connections too */
 				mode = nm_setting_wireless_get_mode (s_wireless);
-				if (!mode || strcmp (mode, "adhoc"))
+				if (!mode || (strcmp (mode, "adhoc") && strcmp (mode, "master")))
 					continue;
 			}
 
@@ -526,6 +605,11 @@ connection_combo_init (NMAWirelessDialog *self, NMConnection *connection)
 	}
 	gtk_tree_model_get_iter_first (priv->connection_model, &tree_iter);
 	gtk_tree_model_get (priv->connection_model, &tree_iter, C_CON_COLUMN, &priv->connection, -1);
+
+	if (!mode_radio_init (self)) {
+		g_warning ("Couldn't set up wireless mode radio buttons.");
+		return FALSE;
+	}
 
 	return TRUE;
 }
@@ -731,7 +815,7 @@ security_combo_init (NMAWirelessDialog *self, gboolean auth_only)
 	int active = -1;
 	int item = 0;
 	NMSettingWireless *s_wireless = NULL;
-	gboolean is_adhoc;
+	NM80211Mode mode;
 
 	g_return_val_if_fail (self != NULL, FALSE);
 
@@ -739,7 +823,7 @@ security_combo_init (NMAWirelessDialog *self, gboolean auth_only)
 	g_return_val_if_fail (priv->device != NULL, FALSE);
 	g_return_val_if_fail (priv->sec_combo != NULL, FALSE);
 
-	is_adhoc = priv->adhoc_create;
+	mode = priv->mode;
 
 	/* The security options displayed are filtered based on device
 	 * capabilities, and if provided, additionally by access point capabilities.
@@ -754,16 +838,22 @@ security_combo_init (NMAWirelessDialog *self, gboolean auth_only)
 	}
 
 	if (priv->connection) {
-		const char *mode;
+		const char *mode_str;
 		const char *security;
 
 		s_wireless = NM_SETTING_WIRELESS (nm_connection_get_setting (priv->connection, NM_TYPE_SETTING_WIRELESS));
 
-		mode = nm_setting_wireless_get_mode (s_wireless);
-		if (mode && !strcmp (mode, "adhoc"))
-			is_adhoc = TRUE;
+		mode_str = nm_setting_wireless_get_mode (s_wireless);
+		if (mode_str) {
+			if (!strcmp (mode_str, "adhoc"))
+				mode = NM_802_11_MODE_ADHOC;
+			else if (!strcmp (mode_str, "master"))
+				mode = NM_802_11_MODE_MASTER;
+			else if (!strcmp (mode_str, "infrastructure"))
+				mode = NM_802_11_MODE_INFRA;
+		}
 
-		wsec = NM_SETTING_WIRELESS_SECURITY (nm_connection_get_setting (priv->connection, 
+		wsec = NM_SETTING_WIRELESS_SECURITY (nm_connection_get_setting (priv->connection,
 										NM_TYPE_SETTING_WIRELESS_SECURITY));
 
 		security = nm_setting_wireless_get_security (s_wireless);
@@ -776,14 +866,16 @@ security_combo_init (NMAWirelessDialog *self, gboolean auth_only)
 			if (wep_type == NM_WEP_KEY_TYPE_UNKNOWN)
 				wep_type = NM_WEP_KEY_TYPE_KEY;
 		}
-	} else if (is_adhoc) {
+	} else if (mode == NM_802_11_MODE_ADHOC) {
 		default_type = NMU_SEC_STATIC_WEP;
 		wep_type = NM_WEP_KEY_TYPE_PASSPHRASE;
+	} else if (mode == NM_802_11_MODE_MASTER) {
+		default_type = NMU_SEC_WPA_PSK;
 	}
 
 	sec_model = gtk_list_store_new (2, G_TYPE_STRING, wireless_security_get_g_type ());
 
-	if (nm_utils_security_valid (NMU_SEC_NONE, dev_caps, !!priv->ap, is_adhoc, ap_flags, ap_wpa, ap_rsn)) {
+	if (nm_utils_security_valid (NMU_SEC_NONE, dev_caps, !!priv->ap, mode, ap_flags, ap_wpa, ap_rsn)) {
 		gtk_list_store_append (sec_model, &iter);
 		gtk_list_store_set (sec_model, &iter,
 		                    S_NAME_COLUMN, _("None"),
@@ -796,11 +888,11 @@ security_combo_init (NMAWirelessDialog *self, gboolean auth_only)
 	/* Don't show Static WEP if both the AP and the device are capable of WPA,
 	 * even though technically it's possible to have this configuration.
 	 */
-	if (   nm_utils_security_valid (NMU_SEC_STATIC_WEP, dev_caps, !!priv->ap, is_adhoc, ap_flags, ap_wpa, ap_rsn)
+	if (   nm_utils_security_valid (NMU_SEC_STATIC_WEP, dev_caps, !!priv->ap, mode, ap_flags, ap_wpa, ap_rsn)
 	    && ((!ap_wpa && !ap_rsn) || !(dev_caps & (NM_WIFI_DEVICE_CAP_WPA | NM_WIFI_DEVICE_CAP_RSN)))) {
 		WirelessSecurityWEPKey *ws_wep;
 
-		ws_wep = ws_wep_key_new (priv->glade_file, priv->connection, NM_WEP_KEY_TYPE_KEY, priv->adhoc_create, auth_only);
+		ws_wep = ws_wep_key_new (priv->glade_file, priv->connection, NM_WEP_KEY_TYPE_KEY, (mode == NM_802_11_MODE_ADHOC), auth_only);
 		if (ws_wep) {
 			add_security_item (self, WIRELESS_SECURITY (ws_wep), sec_model,
 			                   &iter, _("WEP 40/128-bit Key"));
@@ -809,7 +901,7 @@ security_combo_init (NMAWirelessDialog *self, gboolean auth_only)
 			item++;
 		}
 
-		ws_wep = ws_wep_key_new (priv->glade_file, priv->connection, NM_WEP_KEY_TYPE_PASSPHRASE, priv->adhoc_create, auth_only);
+		ws_wep = ws_wep_key_new (priv->glade_file, priv->connection, NM_WEP_KEY_TYPE_PASSPHRASE, (mode == NM_802_11_MODE_ADHOC), auth_only);
 		if (ws_wep) {
 			add_security_item (self, WIRELESS_SECURITY (ws_wep), sec_model,
 			                   &iter, _("WEP 128-bit Passphrase"));
@@ -822,7 +914,7 @@ security_combo_init (NMAWirelessDialog *self, gboolean auth_only)
 	/* Don't show LEAP if both the AP and the device are capable of WPA,
 	 * even though technically it's possible to have this configuration.
 	 */
-	if (   nm_utils_security_valid (NMU_SEC_LEAP, dev_caps, !!priv->ap, is_adhoc, ap_flags, ap_wpa, ap_rsn)
+	if (   nm_utils_security_valid (NMU_SEC_LEAP, dev_caps, !!priv->ap, mode, ap_flags, ap_wpa, ap_rsn)
 	    && ((!ap_wpa && !ap_rsn) || !(dev_caps & (NM_WIFI_DEVICE_CAP_WPA | NM_WIFI_DEVICE_CAP_RSN)))) {
 		WirelessSecurityLEAP *ws_leap;
 
@@ -836,7 +928,7 @@ security_combo_init (NMAWirelessDialog *self, gboolean auth_only)
 		}
 	}
 
-	if (nm_utils_security_valid (NMU_SEC_DYNAMIC_WEP, dev_caps, !!priv->ap, is_adhoc, ap_flags, ap_wpa, ap_rsn)) {
+	if (nm_utils_security_valid (NMU_SEC_DYNAMIC_WEP, dev_caps, !!priv->ap, mode, ap_flags, ap_wpa, ap_rsn)) {
 		WirelessSecurityDynamicWEP *ws_dynamic_wep;
 
 		ws_dynamic_wep = ws_dynamic_wep_new (priv->glade_file, priv->connection);
@@ -849,8 +941,8 @@ security_combo_init (NMAWirelessDialog *self, gboolean auth_only)
 		}
 	}
 
-	if (   nm_utils_security_valid (NMU_SEC_WPA_PSK, dev_caps, !!priv->ap, is_adhoc, ap_flags, ap_wpa, ap_rsn)
-	    || nm_utils_security_valid (NMU_SEC_WPA2_PSK, dev_caps, !!priv->ap, is_adhoc, ap_flags, ap_wpa, ap_rsn)) {
+	if (   nm_utils_security_valid (NMU_SEC_WPA_PSK, dev_caps, !!priv->ap, mode, ap_flags, ap_wpa, ap_rsn)
+	    || nm_utils_security_valid (NMU_SEC_WPA2_PSK, dev_caps, !!priv->ap, mode, ap_flags, ap_wpa, ap_rsn)) {
 		WirelessSecurityWPAPSK *ws_wpa_psk;
 
 		ws_wpa_psk = ws_wpa_psk_new (priv->glade_file, priv->connection);
@@ -863,8 +955,8 @@ security_combo_init (NMAWirelessDialog *self, gboolean auth_only)
 		}
 	}
 
-	if (   nm_utils_security_valid (NMU_SEC_WPA_ENTERPRISE, dev_caps, !!priv->ap, is_adhoc, ap_flags, ap_wpa, ap_rsn)
-	    || nm_utils_security_valid (NMU_SEC_WPA2_ENTERPRISE, dev_caps, !!priv->ap, is_adhoc, ap_flags, ap_wpa, ap_rsn)) {
+	if (   nm_utils_security_valid (NMU_SEC_WPA_ENTERPRISE, dev_caps, !!priv->ap, mode, ap_flags, ap_wpa, ap_rsn)
+	    || nm_utils_security_valid (NMU_SEC_WPA2_ENTERPRISE, dev_caps, !!priv->ap, mode, ap_flags, ap_wpa, ap_rsn)) {
 		WirelessSecurityWPAEAP *ws_wpa_eap;
 
 		ws_wpa_eap = ws_wpa_eap_new (priv->glade_file, priv->connection);
@@ -961,6 +1053,13 @@ internal_init (NMAWirelessDialog *self,
 		widget = glade_xml_get_widget (priv->xml, "network_name_entry");
 		gtk_widget_hide (widget);
 
+		widget = glade_xml_get_widget (priv->xml, "network_mode_label");
+		gtk_widget_hide (widget);
+		widget = glade_xml_get_widget (priv->xml, "mode_adhoc_radio");
+		gtk_widget_hide (widget);
+		widget = glade_xml_get_widget (priv->xml, "mode_infra_radio");
+		gtk_widget_hide (widget);
+
 		security_combo_focus = TRUE;
 		priv->network_name_focus = FALSE;
 	} else {
@@ -1016,7 +1115,7 @@ internal_init (NMAWirelessDialog *self,
 		                         tmp);
 		g_free (esc_ssid);
 		g_free (tmp);
-	} else if (priv->adhoc_create) {
+	} else if (priv->create) {
 		gtk_window_set_title (GTK_WINDOW (self), _("Create New Wireless Network"));
 		label = g_strdup_printf ("<span size=\"larger\" weight=\"bold\">%s</span>\n\n%s",
 		                         _("New wireless network"),
@@ -1077,10 +1176,19 @@ nma_wireless_dialog_get_connection (NMAWirelessDialog *self,
 		s_wireless = (NMSettingWireless *) nm_setting_wireless_new ();
 		g_object_set (s_wireless, NM_SETTING_WIRELESS_SSID, validate_dialog_ssid (self), NULL);
 
-		if (priv->adhoc_create) {
+		if (priv->create) {
 			NMSettingIP4Config *s_ip4;
 
-			g_object_set (s_wireless, NM_SETTING_WIRELESS_MODE, "adhoc", NULL);
+			switch (priv->mode) {
+			case NM_802_11_MODE_ADHOC:
+				g_object_set (s_wireless, NM_SETTING_WIRELESS_MODE, "adhoc", NULL);
+				break;
+			case NM_802_11_MODE_MASTER:
+				g_object_set (s_wireless, NM_SETTING_WIRELESS_MODE, "master", NULL);
+				break;
+			default:
+				nm_warning("Unexpected mode %u", priv->mode);
+			}
 
 			s_ip4 = (NMSettingIP4Config *) nm_setting_ip4_config_new ();
 			g_object_set (s_ip4, NM_SETTING_IP4_CONFIG_METHOD, NM_SETTING_IP4_CONFIG_METHOD_SHARED, NULL);
@@ -1176,7 +1284,7 @@ internal_new_other (NMApplet *applet, gboolean create)
 	priv->applet = applet;
 	priv->sec_combo = glade_xml_get_widget (priv->xml, "security_combo");
 	priv->group = gtk_size_group_new (GTK_SIZE_GROUP_HORIZONTAL);
-	priv->adhoc_create = create;
+	priv->create = create;
 
 	if (!internal_init (self, NULL, NULL, FALSE, create)) {
 		nm_warning ("Couldn't create wireless security dialog.");

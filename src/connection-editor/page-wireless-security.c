@@ -190,10 +190,10 @@ finish_setup (CEPageWirelessSecurity *self, gpointer unused, GError *error, gpoi
 	NMSettingWireless *s_wireless;
 	NMSettingWirelessSecurity *s_wireless_sec;
 	NMConnection *connection = parent->connection;
-	gboolean is_adhoc = FALSE;
 	GtkListStore *sec_model;
 	GtkTreeIter iter;
-	const char *mode;
+	NM80211Mode mode = NM_802_11_MODE_UNKNOWN;
+	const char *mode_str;
 	const char *security;
 	guint32 dev_caps = 0;
 	NMUtilsSecurityType default_type = NMU_SEC_NONE;
@@ -217,11 +217,17 @@ finish_setup (CEPageWirelessSecurity *self, gpointer unused, GError *error, gpoi
 	           | NM_WIFI_DEVICE_CAP_WPA
 	           | NM_WIFI_DEVICE_CAP_RSN;
 
-	mode = nm_setting_wireless_get_mode (s_wireless);
-	if (mode && !strcmp (mode, "adhoc"))
-		is_adhoc = TRUE;
+	mode_str = nm_setting_wireless_get_mode (s_wireless);
+	if (mode_str) {
+		if (!strcmp (mode_str, "adhoc"))
+			mode = NM_802_11_MODE_ADHOC;
+		else if (!strcmp (mode_str, "master"))
+			mode = NM_802_11_MODE_MASTER;
+		else if (!strcmp (mode_str, "infrastructure"))
+			mode = NM_802_11_MODE_INFRA;
+	}
 
-	s_wireless_sec = NM_SETTING_WIRELESS_SECURITY (nm_connection_get_setting (connection, 
+	s_wireless_sec = NM_SETTING_WIRELESS_SECURITY (nm_connection_get_setting (connection,
 	                                               NM_TYPE_SETTING_WIRELESS_SECURITY));
 
 	security = nm_setting_wireless_get_security (s_wireless);
@@ -232,7 +238,7 @@ finish_setup (CEPageWirelessSecurity *self, gpointer unused, GError *error, gpoi
 
 	sec_model = gtk_list_store_new (2, G_TYPE_STRING, wireless_security_get_g_type ());
 
-	if (nm_utils_security_valid (NMU_SEC_NONE, dev_caps, FALSE, is_adhoc, 0, 0, 0)) {
+	if (nm_utils_security_valid (NMU_SEC_NONE, dev_caps, FALSE, mode, 0, 0, 0)) {
 		gtk_list_store_append (sec_model, &iter);
 		gtk_list_store_set (sec_model, &iter,
 		                    S_NAME_COLUMN, _("None"),
@@ -242,7 +248,7 @@ finish_setup (CEPageWirelessSecurity *self, gpointer unused, GError *error, gpoi
 		item++;
 	}
 
-	if (nm_utils_security_valid (NMU_SEC_STATIC_WEP, dev_caps, FALSE, is_adhoc, 0, 0, 0)) {
+	if (nm_utils_security_valid (NMU_SEC_STATIC_WEP, dev_caps, FALSE, mode, 0, 0, 0)) {
 		WirelessSecurityWEPKey *ws_wep;
 		NMWepKeyType wep_type = NM_WEP_KEY_TYPE_KEY;
 
@@ -275,7 +281,7 @@ finish_setup (CEPageWirelessSecurity *self, gpointer unused, GError *error, gpoi
 		}
 	}
 
-	if (nm_utils_security_valid (NMU_SEC_LEAP, dev_caps, FALSE, is_adhoc, 0, 0, 0)) {
+	if (nm_utils_security_valid (NMU_SEC_LEAP, dev_caps, FALSE, mode, 0, 0, 0)) {
 		WirelessSecurityLEAP *ws_leap;
 
 		ws_leap = ws_leap_new (glade_file, connection);
@@ -288,7 +294,7 @@ finish_setup (CEPageWirelessSecurity *self, gpointer unused, GError *error, gpoi
 		}
 	}
 
-	if (nm_utils_security_valid (NMU_SEC_DYNAMIC_WEP, dev_caps, FALSE, is_adhoc, 0, 0, 0)) {
+	if (nm_utils_security_valid (NMU_SEC_DYNAMIC_WEP, dev_caps, FALSE, mode, 0, 0, 0)) {
 		WirelessSecurityDynamicWEP *ws_dynamic_wep;
 
 		ws_dynamic_wep = ws_dynamic_wep_new (glade_file, connection);
@@ -301,8 +307,8 @@ finish_setup (CEPageWirelessSecurity *self, gpointer unused, GError *error, gpoi
 		}
 	}
 
-	if (   nm_utils_security_valid (NMU_SEC_WPA_PSK, dev_caps, FALSE, is_adhoc, 0, 0, 0)
-	    || nm_utils_security_valid (NMU_SEC_WPA2_PSK, dev_caps, FALSE, is_adhoc, 0, 0, 0)) {
+	if (   nm_utils_security_valid (NMU_SEC_WPA_PSK, dev_caps, FALSE, mode, 0, 0, 0)
+	    || nm_utils_security_valid (NMU_SEC_WPA2_PSK, dev_caps, FALSE, mode, 0, 0, 0)) {
 		WirelessSecurityWPAPSK *ws_wpa_psk;
 
 		ws_wpa_psk = ws_wpa_psk_new (glade_file, connection);
@@ -315,8 +321,8 @@ finish_setup (CEPageWirelessSecurity *self, gpointer unused, GError *error, gpoi
 		}
 	}
 
-	if (   nm_utils_security_valid (NMU_SEC_WPA_ENTERPRISE, dev_caps, FALSE, is_adhoc, 0, 0, 0)
-	    || nm_utils_security_valid (NMU_SEC_WPA2_ENTERPRISE, dev_caps, FALSE, is_adhoc, 0, 0, 0)) {
+	if (   nm_utils_security_valid (NMU_SEC_WPA_ENTERPRISE, dev_caps, FALSE, mode, 0, 0, 0)
+	    || nm_utils_security_valid (NMU_SEC_WPA2_ENTERPRISE, dev_caps, FALSE, mode, 0, 0, 0)) {
 		WirelessSecurityWPAEAP *ws_wpa_eap;
 
 		ws_wpa_eap = ws_wpa_eap_new (glade_file, connection);
@@ -384,7 +390,7 @@ ce_page_wireless_security_new (NMConnection *connection, GtkWindow *parent_windo
 
 	self->group = gtk_size_group_new (GTK_SIZE_GROUP_HORIZONTAL);
 
-	s_wsec = NM_SETTING_WIRELESS_SECURITY (nm_connection_get_setting (connection, 
+	s_wsec = NM_SETTING_WIRELESS_SECURITY (nm_connection_get_setting (connection,
 	                                       NM_TYPE_SETTING_WIRELESS_SECURITY));
 
 	security = nm_setting_wireless_get_security (s_wireless);

@@ -185,7 +185,7 @@ band_value_changed_cb (GtkComboBox *box, gpointer user_data)
 
 	priv->last_channel = 0;
 	gtk_spin_button_set_value (priv->channel, 0);
- 
+
  	switch (gtk_combo_box_get_active (GTK_COMBO_BOX (box))) {
  	case 1: /* A */
  	case 2: /* B/G */
@@ -195,7 +195,7 @@ band_value_changed_cb (GtkComboBox *box, gpointer user_data)
 		sensitive = FALSE;
  		break;
  	}
-	
+
 	gtk_widget_set_sensitive (GTK_WIDGET (priv->channel), sensitive);
 
 	ce_page_changed (CE_PAGE (self));
@@ -249,8 +249,13 @@ populate_ui (CEPageWireless *self)
 
 	/* Default to Infrastructure */
 	gtk_combo_box_set_active (priv->mode, 0);
-	if (mode && !strcmp (mode, "adhoc"))
-		gtk_combo_box_set_active (priv->mode, 1);
+	if (mode) {
+		if (!strcmp (mode, "adhoc"))
+			gtk_combo_box_set_active (priv->mode, 1);
+		else if (!strcmp (mode, "master"))
+			gtk_combo_box_set_active (priv->mode, 2);
+	}
+
 	g_signal_connect_swapped (priv->mode, "changed", G_CALLBACK (ce_page_changed), self);
 
 	g_signal_connect (priv->channel, "output",
@@ -412,6 +417,8 @@ ui_to_setting (CEPageWireless *self)
 
 	if (gtk_combo_box_get_active (priv->mode) == 1)
 		mode = "adhoc";
+	else if (gtk_combo_box_get_active (priv->mode) == 2)
+		mode = "master";
 	else
 		mode = "infrastructure";
 

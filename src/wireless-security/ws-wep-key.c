@@ -236,7 +236,7 @@ WirelessSecurityWEPKey *
 ws_wep_key_new (const char *glade_file,
                 NMConnection *connection,
                 NMWepKeyType type,
-                gboolean adhoc_create,
+                gboolean is_adhoc,
                 gboolean simple)
 {
 	WirelessSecurityWEPKey *sec;
@@ -244,7 +244,6 @@ ws_wep_key_new (const char *glade_file,
 	GladeXML *xml;
 	NMSettingWirelessSecurity *s_wsec = NULL;
 	guint8 default_key_idx = 0;
-	gboolean is_adhoc = adhoc_create;
 	gboolean is_shared_key = FALSE;
 
 	g_return_val_if_fail (glade_file != NULL, NULL);

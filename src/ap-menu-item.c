@@ -1,5 +1,5 @@
 /* -*- Mode: C; tab-width: 4; indent-tabs-mode: t; c-basic-offset: 4 -*- */
-/* ap-menu-item.c - Class to represent a Wifi access point 
+/* ap-menu-item.c - Class to represent a Wifi access point
  *
  * Jonathan Blandford <jrb@redhat.com>
  * Dan Williams <dcbw@redhat.com>
@@ -58,7 +58,7 @@ nm_network_menu_item_init (NMNetworkMenuItem * item)
 	gtk_box_pack_start (GTK_BOX (item->hbox), item->detail, FALSE, FALSE, 0);
 
 	item->strength = gtk_progress_bar_new ();
-	
+
 	/* get the font ascent for the current font and language */
 	context = gtk_widget_get_pango_context (item->strength);
 	fontdesc = pango_context_get_font_description (context);
@@ -190,8 +190,9 @@ nm_network_menu_item_set_detail (NMNetworkMenuItem * item,
                                  GdkPixbuf * adhoc_icon,
                                  guint32 dev_caps)
 {
-	gboolean encrypted = FALSE, is_adhoc = FALSE;
+	gboolean encrypted = FALSE;
 	guint32 ap_flags, ap_wpa, ap_rsn;
+	NM80211Mode mode;
 
 	ap_flags = nm_access_point_get_flags (ap);
 	ap_wpa = nm_access_point_get_wpa_flags (ap);
@@ -202,10 +203,9 @@ nm_network_menu_item_set_detail (NMNetworkMenuItem * item,
 	    || (ap_rsn != NM_802_11_AP_SEC_NONE))
 		encrypted = TRUE;
 
-	if (nm_access_point_get_mode (ap) == NM_802_11_MODE_ADHOC)
-		is_adhoc = TRUE;
+	mode = nm_access_point_get_mode (ap);
 
-	if (is_adhoc) {
+	if (mode == NM_802_11_MODE_ADHOC) {
 		gtk_image_set_from_pixbuf (GTK_IMAGE (item->detail), adhoc_icon);
 	} else if (encrypted) {
 		if (gtk_icon_theme_has_icon (gtk_icon_theme_get_default (), "network-wireless-encrypted"))
@@ -217,14 +217,14 @@ nm_network_menu_item_set_detail (NMNetworkMenuItem * item,
 	}
 
 	/* Don't enable the menu item the device can't even connect to the AP */
-	if (   !nm_utils_security_valid (NMU_SEC_NONE, dev_caps, TRUE, is_adhoc, ap_flags, ap_wpa, ap_rsn)
-        && !nm_utils_security_valid (NMU_SEC_STATIC_WEP, dev_caps, TRUE, is_adhoc, ap_flags, ap_wpa, ap_rsn)
-	    && !nm_utils_security_valid (NMU_SEC_LEAP, dev_caps, TRUE, is_adhoc, ap_flags, ap_wpa, ap_rsn)
-	    && !nm_utils_security_valid (NMU_SEC_DYNAMIC_WEP, dev_caps, TRUE, is_adhoc, ap_flags, ap_wpa, ap_rsn)
-	    && !nm_utils_security_valid (NMU_SEC_WPA_PSK, dev_caps, TRUE, is_adhoc, ap_flags, ap_wpa, ap_rsn)
-	    && !nm_utils_security_valid (NMU_SEC_WPA2_PSK, dev_caps, TRUE, is_adhoc, ap_flags, ap_wpa, ap_rsn)
-	    && !nm_utils_security_valid (NMU_SEC_WPA_ENTERPRISE, dev_caps, TRUE, is_adhoc, ap_flags, ap_wpa, ap_rsn)
-	    && !nm_utils_security_valid (NMU_SEC_WPA2_ENTERPRISE, dev_caps, TRUE, is_adhoc, ap_flags, ap_wpa, ap_rsn)) {
+	if (   !nm_utils_security_valid (NMU_SEC_NONE, dev_caps, TRUE, mode, ap_flags, ap_wpa, ap_rsn)
+        && !nm_utils_security_valid (NMU_SEC_STATIC_WEP, dev_caps, TRUE, mode, ap_flags, ap_wpa, ap_rsn)
+	    && !nm_utils_security_valid (NMU_SEC_LEAP, dev_caps, TRUE, mode, ap_flags, ap_wpa, ap_rsn)
+	    && !nm_utils_security_valid (NMU_SEC_DYNAMIC_WEP, dev_caps, TRUE, mode, ap_flags, ap_wpa, ap_rsn)
+	    && !nm_utils_security_valid (NMU_SEC_WPA_PSK, dev_caps, TRUE, mode, ap_flags, ap_wpa, ap_rsn)
+	    && !nm_utils_security_valid (NMU_SEC_WPA2_PSK, dev_caps, TRUE, mode, ap_flags, ap_wpa, ap_rsn)
+	    && !nm_utils_security_valid (NMU_SEC_WPA_ENTERPRISE, dev_caps, TRUE, mode, ap_flags, ap_wpa, ap_rsn)
+	    && !nm_utils_security_valid (NMU_SEC_WPA2_ENTERPRISE, dev_caps, TRUE, mode, ap_flags, ap_wpa, ap_rsn)) {
 		gtk_widget_set_sensitive (GTK_WIDGET (item), FALSE);
 	}
 }

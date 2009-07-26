@@ -35,7 +35,7 @@ typedef struct {
 WirelessSecurityWEPKey * ws_wep_key_new (const char *glade_file,
                                          NMConnection *connection,
                                          NMWepKeyType type,
-                                         gboolean adhoc_create,
+                                         gboolean is_adhoc,
                                          gboolean simple);
 
 #endif /* WS_WEP_KEY_H */
