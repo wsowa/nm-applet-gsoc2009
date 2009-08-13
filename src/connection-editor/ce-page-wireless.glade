@@ -303,7 +303,7 @@ B/G (2.4 GHz)</property>
             <property name="visible">True</property>
             <property name="items" translatable="yes">Infrastructure
 Ad-hoc
-Master</property>
+Access Point</property>
           </widget>
           <packing>
             <property name="left_attach">1</property>

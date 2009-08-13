@@ -221,8 +221,8 @@ finish_setup (CEPageWirelessSecurity *self, gpointer unused, GError *error, gpoi
 	if (mode_str) {
 		if (!strcmp (mode_str, "adhoc"))
 			mode = NM_802_11_MODE_ADHOC;
-		else if (!strcmp (mode_str, "master"))
-			mode = NM_802_11_MODE_MASTER;
+		else if (!strcmp (mode_str, "ap"))
+			mode = NM_802_11_MODE_AP;
 		else if (!strcmp (mode_str, "infrastructure"))
 			mode = NM_802_11_MODE_INFRA;
 	}

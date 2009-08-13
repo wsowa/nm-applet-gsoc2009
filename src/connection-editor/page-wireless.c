@@ -252,7 +252,7 @@ populate_ui (CEPageWireless *self)
 	if (mode) {
 		if (!strcmp (mode, "adhoc"))
 			gtk_combo_box_set_active (priv->mode, 1);
-		else if (!strcmp (mode, "master"))
+		else if (!strcmp (mode, "ap"))
 			gtk_combo_box_set_active (priv->mode, 2);
 	}
 
@@ -418,7 +418,7 @@ ui_to_setting (CEPageWireless *self)
 	if (gtk_combo_box_get_active (priv->mode) == 1)
 		mode = "adhoc";
 	else if (gtk_combo_box_get_active (priv->mode) == 2)
-		mode = "master";
+		mode = "ap";
 	else
 		mode = "infrastructure";
 
